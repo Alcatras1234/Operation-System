@@ -1,0 +1,3 @@
+/home/danial/OS/IHW1/cmake-build-debug/CMakeFiles/IHW1.dir
+/home/danial/OS/IHW1/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/danial/OS/IHW1/cmake-build-debug/CMakeFiles/rebuild_cache.dir
