@@ -2,15 +2,17 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <semaphore.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/sem.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
 #include <time.h>
 #include <sys/wait.h>
 
-#define SHM_NAME "/posix_shm"
-#define SEM_NAME "/posix_sem"
+#define SHM_KEY 1234
+#define SEM_KEY 5678
 #define SHM_SIZE 1024
 #define NUM_PROGRAMMERS 3
 
@@ -21,7 +23,8 @@ typedef struct {
 } shared_data;
 
 shared_data *data;
-sem_t *sem;
+int shm_id;
+int sem_id;
 
 // Функция программиста
 void programmer(int id) {
@@ -29,7 +32,9 @@ void programmer(int id) {
     srand(time(NULL) + id);
     while (1) {
         sleep(rand() % 5 + 1); // Симуляция времени на написание программы
-        sem_wait(sem);
+
+        struct sembuf sem_lock = {0, -1, SEM_UNDO}; // Блокировка семафора
+        semop(sem_id, &sem_lock, 1);
 
         int other = rand() % NUM_PROGRAMMERS;
         while (other == id || data->checking[other]) {
@@ -39,10 +44,13 @@ void programmer(int id) {
         data->checking[other] = 1;
 
         printf("Programmer %d is checking the program of Programmer %d\n", other, id);
-        sem_post(sem);
+
+        struct sembuf sem_unlock = {0, 1, SEM_UNDO}; // Разблокировка семафора
+        semop(sem_id, &sem_unlock, 1);
 
         sleep(rand() % 5 + 1); // Симуляция времени на проверку программы
-        sem_wait(sem);
+
+        semop(sem_id, &sem_lock, 1);
 
         int result = rand() % 2; // Генерация случайного результата проверки
         data->results[id] = result;
@@ -53,7 +61,8 @@ void programmer(int id) {
         } else {
             printf("Programmer %d: Program from Programmer %d is correct.\n", other, id);
         }
-        sem_post(sem);
+
+        semop(sem_id, &sem_unlock, 1);
 
         if (result == 0) {
             printf("Programmer %d is fixing the program.\n", id);
@@ -63,29 +72,36 @@ void programmer(int id) {
 }
 
 int main() {
-    // Инициализация семафора
-    sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
-    if (sem == SEM_FAILED) {
-        perror("sem_open");
-        exit(EXIT_FAILURE);
-    }
-
     // Создание или подключение к разделяемой памяти
-    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1) {
-        perror("shm_open");
+    shm_id = shmget(SHM_KEY, sizeof(shared_data), IPC_CREAT | 0666);
+    if (shm_id == -1) {
+        perror("shmget");
         exit(EXIT_FAILURE);
     }
-    if (ftruncate(shm_fd, sizeof(shared_data)) == -1) {
-        perror("ftruncate");
-        exit(EXIT_FAILURE);
-    }
-    data = (shared_data *) mmap(NULL, sizeof(shared_data), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (data == MAP_FAILED) {
-        perror("mmap");
+    data = (shared_data*) shmat(shm_id, NULL, 0);
+    if (data == (void*) -1) {
+        perror("shmat");
         exit(EXIT_FAILURE);
     }
     memset(data, 0, sizeof(shared_data));
+
+    // Создание семафора
+    sem_id = semget(SEM_KEY, 1, IPC_CREAT | 0666);
+    if (sem_id == -1) {
+        perror("semget");
+        exit(EXIT_FAILURE);
+    }
+    // Инициализация семафора
+    union semun {
+        int val;
+        struct semid_ds *buf;
+        unsigned short *array;
+    } arg;
+    arg.val = 1;
+    if (semctl(sem_id, 0, SETVAL, arg) == -1) {
+        perror("semctl");
+        exit(EXIT_FAILURE);
+    }
 
     pid_t pids[NUM_PROGRAMMERS];
     for (int i = 0; i < NUM_PROGRAMMERS; i++) {
@@ -105,13 +121,20 @@ int main() {
         }
     }
 
-    // Закрытие и удаление семафора
-    sem_close(sem);
-    sem_unlink(SEM_NAME);
+    // Отключение от разделяемой памяти
+    if (shmdt(data) == -1) {
+        perror("shmdt");
+    }
 
-    // Демонтирование и удаление разделяемой памяти
-    munmap(data, sizeof(shared_data));
-    shm_unlink(SHM_NAME);
+    // Удаление разделяемой памяти
+    if (shmctl(shm_id, IPC_RMID, NULL) == -1) {
+        perror("shmctl");
+    }
+
+    // Удаление семафора
+    if (semctl(sem_id, 0, IPC_RMID) == -1) {
+        perror("semctl");
+    }
 
     return 0;
 }
