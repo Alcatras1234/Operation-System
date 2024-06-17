@@ -1,0 +1,3 @@
+/home/danial/OS/IHW3/6-7/server/cmake-build-debug/CMakeFiles/server.dir
+/home/danial/OS/IHW3/6-7/server/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/danial/OS/IHW3/6-7/server/cmake-build-debug/CMakeFiles/rebuild_cache.dir

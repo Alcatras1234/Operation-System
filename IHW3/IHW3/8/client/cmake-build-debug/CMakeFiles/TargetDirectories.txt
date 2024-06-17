@@ -1,0 +1,3 @@
+/home/danial/OS/IHW3/8/client/cmake-build-debug/CMakeFiles/client.dir
+/home/danial/OS/IHW3/8/client/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/danial/OS/IHW3/8/client/cmake-build-debug/CMakeFiles/rebuild_cache.dir
